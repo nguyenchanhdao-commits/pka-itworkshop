@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <curses.h>
 
 typedef struct
 {
@@ -35,7 +36,7 @@ int manhattan_distance(int x1, int y1, int x2, int y2)
 
 void place_random_inside(int *x, int *y)
 {
-    *x = rand() % 8 + 1;
+    *x = rand() % 18 + 1;
     *y = rand() % 8 + 1;
 }
 
@@ -47,41 +48,80 @@ void place_random_far_away(int *x, int *y, int px, int py)
     } while (manhattan_distance(*x, *y, px, py) < 5);
 }
 
-void init_matrix(char matrix[10][10])
+void init_matrix(char matrix[10][20])
 {
     for (int i = 0; i < 10; i++)
     {
-        for (int j = 0; j < 10; j++)
+        for (int j = 0; j < 20; j++)
         {
-            if ((i == 0 || i == 9) && (j == 0 || j == 9))
+            if (i == 0 || i == 9 || j == 0 || j == 19)
             {
                 matrix[i][j] = '#';
             }
-            else if (i == 0 || i == 9)
-            {
-                matrix[i][j] = '-';
-            }
-            else if (j == 0 || j == 9)
-            {
-                matrix[i][j] = '|';
-            }
             else
             {
-                matrix[i][j] = '.';
+                matrix[i][j] = ' ';
             }
         }
     }
 }
 
-void draw_matrix(char matrix[10][10])
+void draw_borders()
+{
+    attron(COLOR_PAIR(1));
+    for (int i = 0; i < 20; i++)
+    {
+        mvaddch(0, i, '-');
+        mvaddch(11, i, '-');
+    }
+    for (int i = 0; i < 12; i++)
+    {
+        mvaddch(i, 0, '|');
+        mvaddch(i, 19, '|');
+    }
+    mvaddch(0, 0, '+');
+    mvaddch(0, 19, '+');
+    mvaddch(11, 0, '+');
+    mvaddch(11, 19, '+');
+    attroff(COLOR_PAIR(1));
+}
+
+void draw_title()
+{
+    attron(COLOR_PAIR(2) | A_BOLD);
+    mvprintw(0, 1, "== MARIO ADVENTURE ==");
+    attroff(COLOR_PAIR(2) | A_BOLD);
+}
+
+void draw_matrix(char matrix[10][20])
 {
     for (int i = 0; i < 10; i++)
     {
-        for (int j = 0; j < 10; j++)
+        for (int j = 0; j < 20; j++)
         {
-            printf("%c ", matrix[i][j]);
+            char c = matrix[i][j];
+            if (c == '#')
+            {
+                attron(COLOR_PAIR(1)); // Blue for walls
+            }
+            else if (c == 'M')
+            {
+                attron(COLOR_PAIR(2)); // Red for Mario
+            }
+            else if (c == 'F')
+            {
+                attron(COLOR_PAIR(3)); // Green for Flag
+            }
+            else if (c == 'G')
+            {
+                attron(COLOR_PAIR(4)); // Yellow for Goomba
+            }
+            else
+            {
+                attron(COLOR_PAIR(5)); // White for empty
+            }
+            mvaddch(i + 1, j, c);
         }
-        printf("\n");
     }
 }
 
@@ -102,7 +142,18 @@ void respawn_player_and_enemy(Player *p, Enemy *e, const Goal *g)
 
 int main()
 {
-    char matrix[10][10];
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    start_color();
+    init_pair(1, COLOR_BLUE, COLOR_BLACK);   // Walls
+    init_pair(2, COLOR_RED, COLOR_BLACK);    // Mario
+    init_pair(3, COLOR_GREEN, COLOR_BLACK);  // Flag
+    init_pair(4, COLOR_YELLOW, COLOR_BLACK); // Goomba
+    init_pair(5, COLOR_WHITE, COLOR_BLACK);  // Empty
+
+    char matrix[10][20];
     srand((unsigned)time(NULL));
 
     Player p;
@@ -124,30 +175,37 @@ int main()
     }
     e.state = PATROL;
 
-    char move;
+    int move;
 
     while (1)
     {
+        erase();
         init_matrix(matrix);
-        matrix[p.y][p.x] = 'P';
-        matrix[g.y][g.x] = 'G';
-        matrix[e.y][e.x] = 'E';
+        matrix[p.y][p.x] = 'M';
+        matrix[g.y][g.x] = 'F';
+        matrix[e.y][e.x] = 'G';
 
+        draw_title();
+        draw_borders();
         draw_matrix(matrix);
-        printf("Player is at col=%d, row=%d with health %d\n", p.x, p.y, p.health);
-        printf("Goal is at col=%d, row=%d\n", g.x, g.y);
-        printf("Enemy is at col=%d, row=%d (%s)\n", e.x, e.y,
-               e.state == CHASE ? "CHASE" : "PATROL");
-        printf("Enter move (W/A/S/D, Q to quit): ");
+        mvprintw(12, 0, "| Mario at (%2d,%d) HP:%3d", p.x, p.y, p.health);
+        mvprintw(13, 0, "| Flag at  (%2d,%d)     ", g.x, g.y);
+        mvprintw(14, 0, "| Goomba at (%2d,%d) [%s] ", e.x, e.y,
+                 e.state == CHASE ? "CHASE" : "PATROL");
+        mvprintw(15, 0, "| Move: W(Up) A(Left) S(Down) D(Right) | Q(Quit)");
+        mvprintw(16, 0, "+--------------------------------------------+");
+        refresh();
 
-        if (scanf(" %c", &move) != 1)
-        {
-            break;
-        }
+        move = getch();
 
         if (move == 'Q' || move == 'q')
         {
-            printf("Quitting game.\n");
+            erase();
+            draw_title();
+            mvprintw(10, 3, "Thanks for playing Mario!");
+            mvprintw(12, 5, "See you next time!");
+            refresh();
+            getch();
             break;
         }
 
@@ -176,26 +234,46 @@ int main()
             break;
         case 'D':
         case 'd':
-            if (p.x < 8)
+            if (p.x < 18)
             {
                 p.x++;
             }
             break;
         default:
-            printf("Invalid move '%c'. Player did not move.\n", move);
+            attron(COLOR_PAIR(4));
+            mvprintw(17, 0, "Invalid move! Try W/A/S/D");
+            attroff(COLOR_PAIR(4));
+            refresh();
+            getch();
             break;
         }
 
         if (p.x == g.x && p.y == g.y)
         {
-            printf("You reached the goal! You win!\n");
+            erase();
+            draw_title();
+            draw_borders();
+            draw_matrix(matrix);
+            mvprintw(17, 0, "+========================================+");
+            mvprintw(18, 0, "| CONGRATULATIONS! Mario reached Flag! |");
+            mvprintw(19, 0, "+========================================+");
+            refresh();
+            getch();
             break;
         }
 
         if (p.x == e.x && p.y == e.y)
         {
             p.health -= 10;
-            printf("Enemy caught you! -10 health. Respawning player and enemy.\n");
+            erase();
+            draw_title();
+            draw_borders();
+            draw_matrix(matrix);
+            mvprintw(17, 0, "+========================================+");
+            mvprintw(18, 0, "| Goomba hit! -10 Health! Respawning... |");
+            mvprintw(19, 0, "+========================================+");
+            refresh();
+            getch();
             respawn_player_and_enemy(&p, &e, &g);
             continue;
         }
@@ -236,7 +314,7 @@ int main()
                 next_y--;
                 break;
             }
-            if (next_x >= 1 && next_x <= 8 && next_y >= 1 && next_y <= 8)
+            if (next_x >= 1 && next_x <= 18 && next_y >= 1 && next_y <= 8)
             {
                 e.x = next_x;
                 e.y = next_y;
@@ -246,13 +324,20 @@ int main()
         if (e.x == p.x && e.y == p.y)
         {
             p.health -= 10;
-            printf("Enemy caught you! -10 health. Respawning player and enemy.\n");
+            erase();
+            draw_title();
+            draw_borders();
+            draw_matrix(matrix);
+            mvprintw(17, 0, "+========================================+");
+            mvprintw(18, 0, "| Goomba hit! -10 Health! Respawning... |");
+            mvprintw(19, 0, "+========================================+");
+            refresh();
+            getch();
             respawn_player_and_enemy(&p, &e, &g);
             continue;
         }
-
-        printf("\n");
     }
 
+    endwin();
     return 0;
 }
